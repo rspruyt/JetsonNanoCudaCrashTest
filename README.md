@@ -5,10 +5,12 @@ Enable or disable #define USE_MUTEX to demonstrate the issue
 
 e.g. (works fine):
 ```
-make all NVCCFLAGS=-DUSE_MUTEX
+make NVCCFLAGS=-DUSE_MUTEX
+./TestCuda
 ```
 
 or e.g. (crashes):
 ```
-make all
+make
+./TestCuda
 ```
