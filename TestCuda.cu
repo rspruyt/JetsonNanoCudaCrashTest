@@ -26,6 +26,7 @@ void testCuda() {
 
 struct MyThread {
 	void run() {
+		cudaFree(NULL);	// should initialize device context in this thread 
 		int threadLoop = 0;
 		while(1) {
 #ifdef USE_MUTEX
