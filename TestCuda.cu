@@ -50,15 +50,54 @@ int main(int argc, char** argv) {
 #ifdef USE_MUTEX
 		m.lock();
 #endif
-		int* temp = nullptr;
+		int* tempHost = nullptr;
+		int* tempDevice = nullptr;
 		printf("*** Main Allocating (loop = %d)\n", loop++);
-		cudaError_t err = cudaMallocManaged(&temp, sizeof(int));
+
+		// allocate mapped memory on the host
+		cudaError_t err = cudaHostAlloc(&tempHost, sizeof(int), cudaHostAllocMapped);
 		if (err != cudaSuccess) {
-			printf("Failed to cudaMallocManaged()\n");
-			return -1;
+			printf("Failed to cudaHostAlloc()\n");
 		}
-		*temp = 0;	// <-- SIGBUS occurs here if don't use a mutex
-		printf("*** Main Finished Allocating value: %d\n", *temp);
+
+		// get the device pointer (that is really mapped to the same memory as the host pointer)
+		err = cudaHostGetDevicePointer(&tempDevice, tempHost, 0);
+		if (err != cudaSuccess) {
+			printf("Failed to cudaHostGetDevicePointer()\n");
+		}
+
+		// set the host pointer to some value and read it
+		*tempHost = 50;
+		printf("*** Main Allocated mapped host value: %d\n", *tempHost);
+
+		// the device pointer should have this same value
+		int tempVal = 0;
+		err = cudaMemcpy(&tempVal, tempDevice, sizeof(int), cudaMemcpyDeviceToHost);
+		if (err != cudaSuccess) {
+			printf("Failed to cudaMemcpy () #1\n");
+		}
+		printf("*** Main Checking device value: %d\n", tempVal);
+
+		// copy new value of '89' from CPU to memory mapped device ptr
+		tempVal = 89;
+		err = cudaMemcpy(tempDevice, &tempVal, sizeof(int), cudaMemcpyHostToDevice);
+		if (err != cudaSuccess) {
+			printf("Failed to cudaMemcpy() #2\n");
+		}
+		
+		// reset tempVal
+		tempVal = 0;
+		
+		// copy device value back to tempVal
+		err = cudaMemcpy(&tempVal, tempDevice, sizeof(int), cudaMemcpyDeviceToHost);
+		if (err != cudaSuccess) {
+			printf("Failed to cudaMemcpy() #3\n");
+		}
+		printf("*** Main Copy Back to Device: %d\n", tempVal);
+
+		// access tempHost to see if it is 89 as well
+		printf("*** Main Host Value: %d\n", *tempHost);
+
 #ifdef USE_MUTEX
 		m.unlock();
 #endif
