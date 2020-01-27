@@ -94,7 +94,7 @@ int main(int argc, char** argv) {
 		if (err != cudaSuccess) {
 			printf("Failed to cudaMemcpy() #3\n");
 		}
-		printf("*** Main 4.) Copy Back to Device: %d\n", tempVal);
+		printf("*** Main 4.) Copy Back to Host: %d\n", tempVal);
 
 		// 5.) Access tempHost to see if it is 89 as well, since tempDevice and tempHost are the same memory
 		printf("*** Main 5.) Host Value: %d\n", *tempHost);
