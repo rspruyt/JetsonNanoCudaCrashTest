@@ -4,6 +4,8 @@ Demonstrating a Jetson Nano Cuda Crash when running an unreleated kernel and all
 The issue is discussed here:
 https://devtalk.nvidia.com/default/topic/1069859/jetson-nano/simple-cuda-multi-threading-crash-on-nano/
 
+** SOLVED ** - Manged memory access while threads are running is not supported on Windows or Mobile/ARM64 platforms as mentioned in the above thread
+
 Enable or disable #define USE_MUTEX to demonstrate the issue
 
 e.g. (works fine):
