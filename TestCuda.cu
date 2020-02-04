@@ -81,7 +81,6 @@ int main(int argc, char** argv) {
 	if (result != CUDA_SUCCESS) {
 		printf("Failed to copy to surface\n");
 	}
-	cudaError_t err = cudaDeviceSynchronize();
 
 	// Copy from surface back to Host	
 	CUDA_MEMCPY2D copy2Param;
@@ -98,8 +97,6 @@ int main(int argc, char** argv) {
 	if (result != CUDA_SUCCESS) {
 		printf("Failed to copy from surface\n");
 	}
-
-	err = cudaDeviceSynchronize();
 
 	printf("\n");
 	for (int i = 0; i < width * height; ++i) {
