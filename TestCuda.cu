@@ -5,7 +5,10 @@
 #include <mutex>
 #include <stdio.h>
 
+// For testing 8-bit and 16-bit surfaces
+
 typedef uint16_t T;
+//typedef uint8_t T;
 
 __global__ void testKernel() {
 	printf("Thread Kernel running\n");
@@ -28,6 +31,7 @@ int main(int argc, char** argv) {
 
 	// initializes cuda
 	cudaFree(NULL);
+	printf("\nUsing T size: %d bytes\n\n", (int)sizeof(T));
 
 	memset(&arrDesc, 0, sizeof(arrDesc));
 	memset(&resDesc, 0, sizeof(resDesc));
@@ -37,7 +41,7 @@ int main(int argc, char** argv) {
 	int height = 5;
 
 	T* data = (T*)calloc(width * height, sizeof(T));
-	T* down = (T*)calloc(width * height, sizeof(uint16_t));
+	T* down = (T*)calloc(width * height, sizeof(T));
 	
 	for (int i = 0; i < width * height; ++i) {
 		data[i] = i * 10;
@@ -72,7 +76,7 @@ int main(int argc, char** argv) {
 	copyParam.WidthInBytes = rowBytes;
 	copyParam.Height = height;
 	
-	printf("Uploading Data to Surface\n");
+	printf("\nUploading Data to Surface\n");
 	result = cuMemcpy2D(&copyParam);
 	if (result != CUDA_SUCCESS) {
 		printf("Failed to copy to surface\n");
@@ -100,6 +104,5 @@ int main(int argc, char** argv) {
 	printf("\n");
 	for (int i = 0; i < width * height; ++i) {
 		printf("down[%d] = %d\n", i, down[i]);
-	}	
-	int a = 0;
+	}
 }
