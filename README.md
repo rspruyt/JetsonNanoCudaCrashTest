@@ -1,21 +1,18 @@
-# JetsonNanoCudaCrashTest
-Demonstrating a Jetson Nano Cuda Crash when running an unreleated kernel and allocation in seperate threads. This was last tested on Jetpack R32.3.1 (2019/12/17 release), but the behaviour is consistent on the previous Nano release and on the TX2 with Jetpack 32.2.X.
+# 16 vs 8-bit kernel surface read test
+Demonstrating 8-bit surface reading works fine in a kernel but 16-bit seems to cause the kernel to fail
 
-The issue is discussed here:
-https://devtalk.nvidia.com/default/topic/1069859/jetson-nano/simple-cuda-multi-threading-crash-on-nano/
+Enable or disable #define USE_16_BIT to demonstrate the issue
 
-** SOLVED ** Concurrent Managed Memory access while kernels are executing is not supported on Windows or Mobile/ARM64 devices as mentioned in the above thread
+e.g. (works fine using 8-bit surface/data):
 
-Enable or disable #define USE_MUTEX to demonstrate the issue
-
-e.g. (works fine):
 ```
-make NVCCFLAGS=-DUSE_MUTEX
+make
 ./TestCuda
 ```
 
-or e.g. (crashes):
+or e.g. (kernel fails using 16-bit surface/data):
+
 ```
-make
+make NVCCFLAGS=-DUSE_16_BIT
 ./TestCuda
 ```
