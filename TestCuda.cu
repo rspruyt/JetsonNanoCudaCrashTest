@@ -1,105 +1,96 @@
 #include <cuda.h>
 #include <cuda_runtime.h>
-#include <unistd.h>
-#include <future>
-#include <mutex>
 #include <stdio.h>
 
-// For testing 8-bit and 16-bit surfaces
 
-typedef uint16_t T;
-//typedef uint8_t T;
+#define USE_16_BIT	// This works for 8 bit but not 16 (comment this out for 8-bit)
 
-__global__ void testKernel() {
-	printf("Thread Kernel running\n");
-}
 
-void testCuda() {
-	testKernel<<<1,1>>>();
-	cudaError_t err = cudaDeviceSynchronize();
-	if (err != cudaSuccess) {
-		printf("SYNC FAILED\n\n\n");
+#ifdef USE_16_BIT
+	typedef uint16_t T;	// 16-bit
+#else
+	typedef uint8_t T;	// 8-bit
+#endif
+
+#define WIDTH 3
+#define HEIGHT 3
+
+__global__ void testKernel(CUsurfObject surf) {
+	for (int i=0; i < HEIGHT; ++i) { // y
+		for (int j=0; j < WIDTH; ++j) { // x
+			T val = surf2Dread<T>(surf, j, i, cudaBoundaryModeClamp);
+			printf("x=%d y=%d, surf=%llu val=%d\n", j, i, surf, val);
+		}
 	}
 }
 
 int main(int argc, char** argv) {
-	CUresult result;
-	CUDA_ARRAY_DESCRIPTOR arrDesc;
-	CUDA_RESOURCE_DESC resDesc;
 	CUarray array = 0;
 	CUsurfObject surf = 0;
-
-	// initializes cuda
-	cudaFree(NULL);
-	printf("\nUsing T size: %d bytes\n\n", (int)sizeof(T));
-
+	CUDA_ARRAY_DESCRIPTOR arrDesc;
+	CUDA_RESOURCE_DESC resDesc;
+	
+	// clear the descriptors
 	memset(&arrDesc, 0, sizeof(arrDesc));
 	memset(&resDesc, 0, sizeof(resDesc));
-
-	// initialize data
-	int width = 5;
-	int height = 5;
-
-	T* data = (T*)calloc(width * height, sizeof(T));
-	T* down = (T*)calloc(width * height, sizeof(T));
 	
-	for (int i = 0; i < width * height; ++i) {
-		data[i] = i * 10;
-		printf("data[%d] = %d\n", i, data[i]);
-	}
-
-	// create cuda array
-	arrDesc.Format = 8 * sizeof(T) <= 8 ? CU_AD_FORMAT_UNSIGNED_INT8 : CU_AD_FORMAT_UNSIGNED_INT16;
-	arrDesc.Width = width;
-	arrDesc.Height = height;
+	// init CUDA
+	cudaFree(NULL);
+	
+	// create an 8 or 16 bit array
+	arrDesc.Format = sizeof(T) * 8 == 8 ? CU_AD_FORMAT_UNSIGNED_INT8 : CU_AD_FORMAT_UNSIGNED_INT16;
+	arrDesc.Width = WIDTH;
+	arrDesc.Height = HEIGHT;
 	arrDesc.NumChannels = 1;
-	result = cuArrayCreate(&array, &arrDesc);
+	CUresult result = cuArrayCreate(&array, &arrDesc);
 	if (result != CUDA_SUCCESS) {
 		printf("Failed to create CUDA Array\n");
+		return -1;
 	}
+
+	// create a surface from the array
 	resDesc.resType = CU_RESOURCE_TYPE_ARRAY;
 	resDesc.res.array.hArray = array;
 	result = cuSurfObjectCreate(&surf, &resDesc);
 	if (result != CUDA_SUCCESS) {
-		printf("Failed to cuSurfObjectCreate\n");
+		printf("Failed to create Surface\n");
+		return -1;
+	}
+	printf("\nCreated surface %llu\n\n", surf);
+
+	// create some host data to copy to the surface
+	T* data = (T*)calloc(WIDTH * HEIGHT, sizeof(T));
+	for (int i = 0; i < WIDTH * HEIGHT; ++i) {
+		data[i] = i;
+		printf("data[%d] = %d\n", i, data[i]);
 	}
 
-	// Copy from Host to Surface
+	// copy data from Host to Surface
 	CUDA_MEMCPY2D copyParam;
 	memset(&copyParam, 0, sizeof(copyParam));
-	int rowBytes = width * sizeof(T);
+	int rowBytes = WIDTH * sizeof(T);
 	copyParam.dstMemoryType = CU_MEMORYTYPE_ARRAY;
 	copyParam.dstArray = array;
 	copyParam.srcMemoryType = CU_MEMORYTYPE_HOST;
 	copyParam.srcHost = data;
 	copyParam.srcPitch = rowBytes;
 	copyParam.WidthInBytes = rowBytes;
-	copyParam.Height = height;
+	copyParam.Height = HEIGHT;
 	
 	printf("\nUploading Data to Surface\n");
 	result = cuMemcpy2D(&copyParam);
 	if (result != CUDA_SUCCESS) {
 		printf("Failed to copy to surface\n");
+		return -1;
 	}
 
-	// Copy from surface back to Host	
-	CUDA_MEMCPY2D copy2Param;
-	memset(&copy2Param, 0, sizeof(copy2Param));
-	copy2Param.srcMemoryType = CU_MEMORYTYPE_ARRAY;
-	copy2Param.srcArray = array;
-	copy2Param.dstMemoryType = CU_MEMORYTYPE_HOST;
-	copy2Param.dstHost = down;
-	copy2Param.dstPitch = rowBytes;
-	copy2Param.WidthInBytes = rowBytes;
-	copy2Param.Height = height;
-	printf("Download Data from Surface\n");
-	result = cuMemcpy2D(&copy2Param);
-	if (result != CUDA_SUCCESS) {
-		printf("Failed to copy from surface\n");
-	}
-
-	printf("\n");
-	for (int i = 0; i < width * height; ++i) {
-		printf("down[%d] = %d\n", i, down[i]);
-	}
+	// run the kernel
+	testKernel<<<1,1>>>(surf);
+	cudaError_t err = cudaDeviceSynchronize();
+	if (err == cudaSuccess) {
+		printf("\nSuccess!\n");
+	} else {
+		printf("Kernel failed: %d\n", err);
+		return -1;
+	}	
 }
