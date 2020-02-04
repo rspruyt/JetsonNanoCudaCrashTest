@@ -1,16 +1,18 @@
-# JetsonNanoCudaCrashTest
-Demonstrating a Jetson Nano Cuda Crash when running an unreleated kernel and allocation in seperate threads. 
+# 16 vs 8-bit kernel surface read test
+Demonstrating 8-bit surface reading works fine in a kernel but 16-bit seems to cause the kernel to fail
 
-Enable or disable #define USE_MUTEX to demonstrate the issue
+Enable or disable #define USE_16_BIT to demonstrate the issue
 
-e.g. (works fine):
+e.g. (works fine using 8-bit surface/data):
+
 ```
-make NVCCFLAGS=-DUSE_MUTEX
+make
 ./TestCuda
 ```
 
-or e.g. (crashes):
+or e.g. (kernel fails using 16-bit surface/data):
+
 ```
-make
+make NVCCFLAGS=-DUSE_16_BIT
 ./TestCuda
 ```
