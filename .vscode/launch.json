@@ -1,0 +1,27 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "GDB Remote Debug",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceRoot}/TestCuda",
+            "cwd": "${workspaceRoot}",
+            "miDebuggerServerAddress": "nano-randy:333",
+            "windows": {
+                "miDebuggerPath": "Z:\\MystiquePipeline\\gdb\\aarch64-linux-gnu-gdb.exe",         # You will need to build gdb from source, run build_gdb_arm64.sh and build it for windows
+                "sourceFileMap": {
+                    "/home/rspruyt/MystiquePipeline": "Z:\\MystiquePipeline",               # Where your source code is, e.g. x64 Linux host/mounted drive
+                }
+            },
+            "MIMode": "gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                } 
+            ],
+        }
+    ]
+}

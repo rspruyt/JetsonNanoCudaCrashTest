@@ -5,12 +5,7 @@
 #include <mutex>
 #include <stdio.h>
 
-// This works fine with a mutex, but crashes with a sigbus error when not using a mutex
-// #define USE_MUTEX
-
-#ifdef USE_MUTEX
-std::mutex m;
-#endif
+typedef uint16_t T;
 
 __global__ void testKernel() {
 	printf("Thread Kernel running\n");
@@ -24,84 +19,87 @@ void testCuda() {
 	}
 }
 
-struct MyThread {
-	void run() {
-		int threadLoop = 0;
-		while(1) {
-#ifdef USE_MUTEX
-			m.lock();
-#endif
-			printf("Thread Run (loop %d)\n", threadLoop++);
-			// run kernel
-			testCuda();
-#ifdef USE_MUTEX
-			m.unlock();
-#endif
-			usleep(0);
-		}
-	}
-};
-
 int main(int argc, char** argv) {
-	MyThread thread;
-	auto threadFuture = std::async(std::launch::async, &MyThread::run, thread);
-	int loop = 0;
-	while(1){
-#ifdef USE_MUTEX
-		m.lock();
-#endif
-		int* tempHost = nullptr;
-		int* tempDevice = nullptr;
+	CUresult result;
+	CUDA_ARRAY_DESCRIPTOR arrDesc;
+	CUDA_RESOURCE_DESC resDesc;
+	CUarray array = 0;
+	CUsurfObject surf = 0;
 
-		// 1.) Allocate mapped memory on the host
-		printf("*** Main 1.) Allocating (loop = %d)\n", loop++);		
-		cudaError_t err = cudaHostAlloc(&tempHost, sizeof(int), cudaHostAllocMapped);
-		if (err != cudaSuccess) {
-			printf("Failed to cudaHostAlloc()\n");
-		}
+	// initializes cuda
+	cudaFree(NULL);
 
-		// get the device pointer (that is really mapped to the same memory as the host pointer)
-		err = cudaHostGetDevicePointer(&tempDevice, tempHost, 0);
-		if (err != cudaSuccess) {
-			printf("Failed to cudaHostGetDevicePointer()\n");
-		}
+	memset(&arrDesc, 0, sizeof(arrDesc));
+	memset(&resDesc, 0, sizeof(resDesc));
 
-		// 2.) Set the host pointer to some value and read it
-		*tempHost = 50;
-		printf("*** Main 2.) Allocated mapped host value: %d\n", *tempHost);
+	// initialize data
+	int width = 5;
+	int height = 5;
 
-		// 3.) If we copy the Device pointer back to a host value, we should get the same '50' value, 
-		//	   since this is mapped memory
-		int tempVal = 0;
-		err = cudaMemcpy(&tempVal, tempDevice, sizeof(int), cudaMemcpyDeviceToHost);
-		if (err != cudaSuccess) {
-			printf("Failed to cudaMemcpy () #1\n");
-		}
-		printf("*** Main 3.) Checking device value: %d\n", tempVal);
-
-		// 4.) Copy new value of '89' from CPU to memory mapped device ptr
-		tempVal = 89;
-		err = cudaMemcpy(tempDevice, &tempVal, sizeof(int), cudaMemcpyHostToDevice);
-		if (err != cudaSuccess) {
-			printf("Failed to cudaMemcpy() #2\n");
-		}
-		
-		// reset tempVal
-		tempVal = 0;
-		
-		// copy the device value back to tempVal
-		err = cudaMemcpy(&tempVal, tempDevice, sizeof(int), cudaMemcpyDeviceToHost);
-		if (err != cudaSuccess) {
-			printf("Failed to cudaMemcpy() #3\n");
-		}
-		printf("*** Main 4.) Copy Back to Host: %d\n", tempVal);
-
-		// 5.) Access tempHost to see if it is 89 as well, since tempDevice and tempHost are the same memory
-		printf("*** Main 5.) Host Value: %d\n", *tempHost);
-
-#ifdef USE_MUTEX
-		m.unlock();
-#endif
-		usleep(0);
+	T* data = (T*)calloc(width * height, sizeof(T));
+	T* down = (T*)calloc(width * height, sizeof(uint16_t));
+	
+	for (int i = 0; i < width * height; ++i) {
+		data[i] = i * 10;
+		printf("data[%d] = %d\n", i, data[i]);
 	}
+
+	// create cuda array
+	arrDesc.Format = 8 * sizeof(T) <= 8 ? CU_AD_FORMAT_UNSIGNED_INT8 : CU_AD_FORMAT_UNSIGNED_INT16;
+	arrDesc.Width = width;
+	arrDesc.Height = height;
+	arrDesc.NumChannels = 1;
+	result = cuArrayCreate(&array, &arrDesc);
+	if (result != CUDA_SUCCESS) {
+		printf("Failed to create CUDA Array\n");
+	}
+	resDesc.resType = CU_RESOURCE_TYPE_ARRAY;
+	resDesc.res.array.hArray = array;
+	result = cuSurfObjectCreate(&surf, &resDesc);
+	if (result != CUDA_SUCCESS) {
+		printf("Failed to cuSurfObjectCreate\n");
+	}
+
+	// Copy from Host to Surface
+	CUDA_MEMCPY2D copyParam;
+	memset(&copyParam, 0, sizeof(copyParam));
+	int rowBytes = width * sizeof(T);
+	copyParam.dstMemoryType = CU_MEMORYTYPE_ARRAY;
+	copyParam.dstArray = array;
+	copyParam.srcMemoryType = CU_MEMORYTYPE_HOST;
+	copyParam.srcHost = data;
+	copyParam.srcPitch = rowBytes;
+	copyParam.WidthInBytes = rowBytes;
+	copyParam.Height = height;
+	
+	printf("Uploading Data to Surface\n");
+	result = cuMemcpy2D(&copyParam);
+	if (result != CUDA_SUCCESS) {
+		printf("Failed to copy to surface\n");
+	}
+	cudaError_t err = cudaDeviceSynchronize();
+
+	// Copy from surface back to Host	
+	CUDA_MEMCPY2D copy2Param;
+	memset(&copy2Param, 0, sizeof(copy2Param));
+	copy2Param.srcMemoryType = CU_MEMORYTYPE_ARRAY;
+	copy2Param.srcArray = array;
+	copy2Param.dstMemoryType = CU_MEMORYTYPE_HOST;
+	copy2Param.dstHost = down;
+	copy2Param.dstPitch = rowBytes;
+	copy2Param.WidthInBytes = rowBytes;
+	copy2Param.Height = height;
+	printf("Download Data from Surface\n");
+	result = cuMemcpy2D(&copy2Param);
+	if (result != CUDA_SUCCESS) {
+		printf("Failed to copy from surface\n");
+	}
+
+	err = cudaDeviceSynchronize();
+
+	printf("\n");
+	for (int i = 0; i < width * height; ++i) {
+		printf("down[%d] = %d\n", i, down[i]);
+	}	
+	int a = 0;
 }
