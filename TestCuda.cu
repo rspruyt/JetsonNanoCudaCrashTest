@@ -18,8 +18,8 @@
 __global__ void testKernel(CUsurfObject surf) {
 	for (int i=0; i < HEIGHT; ++i) { // y
 		for (int j=0; j < WIDTH; ++j) { // x
-			T val = surf2Dread<T>(surf, j, i, cudaBoundaryModeClamp);
-			printf("x=%d y=%d, surf=%llu val=%d\n", j, i, surf, val);
+			T val = surf2Dread<T>(surf, j*sizeof(T), i, cudaBoundaryModeClamp);
+			printf("x=%d y=%d, surf=%llu val=%d\n, reading %d bytes", j, i, surf, val, sizeof(T));
 		}
 	}
 }
@@ -29,14 +29,14 @@ int main(int argc, char** argv) {
 	CUsurfObject surf = 0;
 	CUDA_ARRAY_DESCRIPTOR arrDesc;
 	CUDA_RESOURCE_DESC resDesc;
-	
+
 	// clear the descriptors
 	memset(&arrDesc, 0, sizeof(arrDesc));
 	memset(&resDesc, 0, sizeof(resDesc));
-	
+
 	// init CUDA
 	cudaFree(NULL);
-	
+
 	// create an 8 or 16 bit array
 	arrDesc.Format = sizeof(T) * 8 == 8 ? CU_AD_FORMAT_UNSIGNED_INT8 : CU_AD_FORMAT_UNSIGNED_INT16;
 	arrDesc.Width = WIDTH;
@@ -76,7 +76,7 @@ int main(int argc, char** argv) {
 	copyParam.srcPitch = rowBytes;
 	copyParam.WidthInBytes = rowBytes;
 	copyParam.Height = HEIGHT;
-	
+
 	printf("\nUploading Data to Surface\n");
 	result = cuMemcpy2D(&copyParam);
 	if (result != CUDA_SUCCESS) {
@@ -92,5 +92,5 @@ int main(int argc, char** argv) {
 	} else {
 		printf("Kernel failed: %d\n", err);
 		return -1;
-	}	
+	}
 }
