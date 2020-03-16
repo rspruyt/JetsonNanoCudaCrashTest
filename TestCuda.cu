@@ -1,68 +1,44 @@
 #include <cuda.h>
 #include <cuda_runtime.h>
 #include <unistd.h>
-#include <future>
-#include <mutex>
 #include <stdio.h>
+#include <string>
 
 // This works fine with a mutex, but crashes with a sigbus error when not using a mutex
 // #define USE_MUTEX
 
-#ifdef USE_MUTEX
-std::mutex m;
-#endif
-
-__global__ void testKernel() {
-	printf("Thread Kernel running\n");
-}
-
-void testCuda() {
-	testKernel<<<1,1>>>();
-	cudaError_t err = cudaDeviceSynchronize();
-	if (err != cudaSuccess) {
-		printf("SYNC FAILED\n\n\n");
+void printFreeMem(const std::string& prefix, size_t& free) {
+	size_t total = 0;
+	cudaError_t err = cudaMemGetInfo(&free, &total);
+	if (err == cudaSuccess) {
+		printf("%s: %llu bytes = %d%% free\n", prefix.c_str(), (long long int)free, (int)(((float)free / total)*100));
+	} else {
+		printf("!!!! Failed to cudaMemGetInfo(), err: %d\n", err);
 	}
 }
-
-struct MyThread {
-	void run() {
-		cudaFree(NULL);	// should initialize device context in this thread 
-		int threadLoop = 0;
-		while(1) {
-#ifdef USE_MUTEX
-			m.lock();
-#endif
-			printf("Thread Run (loop %d)\n", threadLoop++);
-			// run kernel
-			testCuda();
-#ifdef USE_MUTEX
-			m.unlock();
-#endif
-			usleep(0);
-		}
-	}
-};
 
 int main(int argc, char** argv) {
-	MyThread thread;
-	auto threadFuture = std::async(std::launch::async, &MyThread::run, thread);
-	int loop = 0;
-	while(1){
-#ifdef USE_MUTEX
-		m.lock();
-#endif
-		int* temp = nullptr;
-		printf("*** Main Allocating (loop = %d)\n", loop++);
-		cudaError_t err = cudaMallocManaged(&temp, sizeof(int));
-		if (err != cudaSuccess) {
-			printf("Failed to cudaMallocManaged()\n");
+	for (int i = 0; i < 20; ++i) {
+		size_t freeBefore = 0;
+		printFreeMem("Test " + std::to_string(i) + " - before", freeBefore);
+		// 10,000 x 10,000 byts = ~ 100 MB
+		CUDA_ARRAY_DESCRIPTOR arrDesc;
+		memset(&arrDesc, 0, sizeof(arrDesc));
+
+		arrDesc.Format = CU_AD_FORMAT_UNSIGNED_INT8;
+		arrDesc.Width = 10000;
+		arrDesc.Height = 10000;
+		arrDesc.NumChannels = 1;
+		CUarray cuArr;
+		CUresult result = cuArrayCreate(&cuArr, &arrDesc);
+		if (result != CUDA_SUCCESS) {
+			printf("!!!! cuArrayCreate() failed\n");
 			return -1;
 		}
-		*temp = 0;	// <-- SIGBUS occurs here if don't use a mutex
-		printf("*** Main Finished Allocating value: %d\n", *temp);
-#ifdef USE_MUTEX
-		m.unlock();
-#endif
-		usleep(0);
+		size_t freeAfter = 0;
+		printFreeMem("Test " + std::to_string(i) + " - after", freeAfter);
+		printf("diff: = %d\n\n", (int)(freeBefore - freeAfter));
 	}
+
+	return 0;
 }
